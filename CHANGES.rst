@@ -1,7 +1,7 @@
 Change log
 ==========
 
-8.6 (unreleased)
+8.7 (unreleased)
 ----------------
 
 - Add an opt-in *strict* mode to ``Components`` registries. When
@@ -18,6 +18,11 @@ Change log
 - Add ``Components.findAmbiguousUtilities()``, which reports such
   order-dependent utility lookups without changing runtime behaviour, for use
   as a test-time or start-up audit.
+
+8.6 (2026-08-20)
+----------------
+
+- Add support for Python 3.15.
 
 
 8.5 (2026-05-26)
@@ -47,9 +52,9 @@ Change log
 ----------------
 
 - Add support for free-threaded Python 3.14t: declare ``Py_mod_gil_not_used``
-  in C extension, replace borrowed-reference ``PyDict_GetItem()`` with strong-
-  reference ``PyDict_GetItemRef()`` in cache lookups, and use ``Py_TYPE()``
-  macro instead of direct ``ob_type`` struct access.
+  in C extension, replace borrowed-reference ``PyDict_GetItem()`` with
+  strong-reference ``PyDict_GetItemRef()`` in cache lookups, and use
+  ``Py_TYPE()`` macro instead of direct ``ob_type`` struct access.
 
 - Add CI testing for free-threaded Python 3.14t (Linux).
 

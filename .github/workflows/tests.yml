@@ -46,6 +46,13 @@ on:
   # Allow to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+defaults:
+  run:
+    # ``pwsh`` propagates only the exit code of the *last* command of a
+    # multi-command block, so failures on Windows go unnoticed. ``bash``
+    # runs with ``-eo pipefail`` and aborts the step on the first failure.
+    shell: bash
+
 env:
   # Weirdly, this has to be a top-level key, not ``defaults.env``
   PYTHONHASHSEED: 8675309
@@ -119,11 +126,11 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -133,43 +140,39 @@ jobs:
       # to save the cache. So it must come before the thing we want to use
       # the cache.
       ###
-      - name: Get pip cache dir (default)
-        id: pip-cache-default
-        if: ${{ !startsWith(runner.os, 'Windows') }}
+      - name: Get pip cache dir
+        id: pip-cache
         run: |
-          echo "dir=$(pip cache dir)" >>$GITHUB_OUTPUT
+          echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
 
-      - name: Get pip cache dir (Windows)
-        id: pip-cache-windows
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        run: |
-          echo "dir=$(pip cache dir)" >> $Env:GITHUB_OUTPUT
-
-      - name: pip cache (default)
+      - name: pip cache
         uses: actions/cache@v5
-        if: ${{ !startsWith(runner.os, 'Windows') }}
         with:
-          path: ${{ steps.pip-cache-default.outputs.dir }}
+          path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
-      - name: pip cache (Windows)
-        uses: actions/cache@v5
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        with:
-          path: ${{ steps.pip-cache-windows.outputs.dir }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
 
       - name: Install Build Dependencies (3.15)
         if: startsWith(matrix.python-version, '3.15')
         run: |
-          python -m pip install -U pip
-          pip install -U "setuptools >= 78.1.1,< 82" wheel twine cffi pycparser
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
+          retry python -m pip install -U pip
+          retry pip install -U "setuptools >= 78.1.1,< 82" wheel twine cffi pycparser
       - name: Install Build Dependencies
         if: ${{ !startsWith(matrix.python-version, '3.15') }}
         run: |
-          python -m pip install -U pip
-          pip install -U "setuptools >= 78.1.1,< 82" wheel twine
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
+          retry python -m pip install -U pip
+          retry pip install -U "setuptools >= 78.1.1,< 82" wheel twine
 
       - name: Build zope.interface (macOS x86_64)
         if: >
@@ -217,16 +220,28 @@ jobs:
       - name: Install zope.interface and dependencies (3.15)
         if: startsWith(matrix.python-version, '3.15')
         run: |
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
           # Install to collect dependencies into the (pip) cache.
           # Use "--pre" here because dependencies with support for this future
           # Python release may only be available as pre-releases
-          pip install --pre .[test]
+          retry pip install --pre .[test]
       - name: Install zope.interface and dependencies
         if: ${{ !startsWith(matrix.python-version, '3.15') }}
         run: |
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
           # Install to collect dependencies into the (pip) cache.
-          python -m pip install -U pip "setuptools >= 78.1.1,< 82"
-          pip install .[test]
+          retry python -m pip install -U pip "setuptools >= 78.1.1,< 82"
+          retry pip install .[test]
 
       - name: Check zope.interface build
         run: |
@@ -314,11 +329,11 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -328,32 +343,16 @@ jobs:
       # to save the cache. So it must come before the thing we want to use
       # the cache.
       ###
-      - name: Get pip cache dir (default)
-        id: pip-cache-default
-        if: ${{ !startsWith(runner.os, 'Windows') }}
+      - name: Get pip cache dir
+        id: pip-cache
         run: |
-          echo "dir=$(pip cache dir)" >>$GITHUB_OUTPUT
+          echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
 
-      - name: Get pip cache dir (Windows)
-        id: pip-cache-windows
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        run: |
-          echo "dir=$(pip cache dir)" >> $Env:GITHUB_OUTPUT
-
-      - name: pip cache (default)
+      - name: pip cache
         uses: actions/cache@v5
-        if: ${{ !startsWith(runner.os, 'Windows') }}
         with:
-          path: ${{ steps.pip-cache-default.outputs.dir }}
+          path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
-      - name: pip cache (Windows)
-        uses: actions/cache@v5
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        with:
-          path: ${{ steps.pip-cache-windows.outputs.dir }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
       - name: Download zope.interface wheel (Linux/macOS)
         if: "!startsWith(runner.os, 'Windows')"
         uses: actions/download-artifact@v8
@@ -419,11 +418,11 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -433,32 +432,16 @@ jobs:
       # to save the cache. So it must come before the thing we want to use
       # the cache.
       ###
-      - name: Get pip cache dir (default)
-        id: pip-cache-default
-        if: ${{ !startsWith(runner.os, 'Windows') }}
+      - name: Get pip cache dir
+        id: pip-cache
         run: |
-          echo "dir=$(pip cache dir)" >>$GITHUB_OUTPUT
+          echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
 
-      - name: Get pip cache dir (Windows)
-        id: pip-cache-windows
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        run: |
-          echo "dir=$(pip cache dir)" >> $Env:GITHUB_OUTPUT
-
-      - name: pip cache (default)
+      - name: pip cache
         uses: actions/cache@v5
-        if: ${{ !startsWith(runner.os, 'Windows') }}
         with:
-          path: ${{ steps.pip-cache-default.outputs.dir }}
+          path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
-      - name: pip cache (Windows)
-        uses: actions/cache@v5
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        with:
-          path: ${{ steps.pip-cache-windows.outputs.dir }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
       - name: Download zope.interface wheel
         uses: actions/download-artifact@v8
         with:
@@ -466,9 +449,15 @@ jobs:
           path: dist/
       - name: Install zope.interface
         run: |
-          pip install -U wheel
-          pip install -U coverage[toml]
-          pip install -U  "`ls dist/*.whl`[docs]"
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
+          retry pip install -U wheel
+          retry pip install -U coverage[toml]
+          retry pip install -U  "`ls dist/*.whl`[docs]"
       - name: Build docs
         env:
           ZOPE_INTERFACE_STRICT_IRO: 1
@@ -486,11 +475,11 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -500,32 +489,16 @@ jobs:
       # to save the cache. So it must come before the thing we want to use
       # the cache.
       ###
-      - name: Get pip cache dir (default)
-        id: pip-cache-default
-        if: ${{ !startsWith(runner.os, 'Windows') }}
+      - name: Get pip cache dir
+        id: pip-cache
         run: |
-          echo "dir=$(pip cache dir)" >>$GITHUB_OUTPUT
+          echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
 
-      - name: Get pip cache dir (Windows)
-        id: pip-cache-windows
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        run: |
-          echo "dir=$(pip cache dir)" >> $Env:GITHUB_OUTPUT
-
-      - name: pip cache (default)
+      - name: pip cache
         uses: actions/cache@v5
-        if: ${{ !startsWith(runner.os, 'Windows') }}
         with:
-          path: ${{ steps.pip-cache-default.outputs.dir }}
+          path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
-      - name: pip cache (Windows)
-        uses: actions/cache@v5
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        with:
-          path: ${{ steps.pip-cache-windows.outputs.dir }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pip-${{ matrix.python-version }}
-
       - name: Download zope.interface wheel
         uses: actions/download-artifact@v8
         with:
@@ -533,9 +506,15 @@ jobs:
           path: dist/
       - name: Install zope.interface
         run: |
-          pip install -U wheel
-          pip install -U tox
-          pip install -U  "`ls dist/*.whl`[docs]"
+          # PyPI downloads are occasionally cut off mid-transfer, which makes
+          # pip fail with ``IncompleteRead``. pip does not retry a truncated
+          # download, so retry the complete command. Purge pip's cache before
+          # the last attempt: should a truncated download ever get *cached*,
+          # it would fail every attempt in the same way.
+          retry() { for i in 1 2; do "$@" && return 0; echo "Attempt $i failed, retrying in 15s ..."; sleep 15; done; pip cache purge || true; "$@"; }
+          retry pip install -U wheel
+          retry pip install -U tox
+          retry pip install -U  "`ls dist/*.whl`[docs]"
       - name: Run release check
         env:
           ZOPE_INTERFACE_STRICT_IRO: 1
@@ -560,11 +539,11 @@ jobs:
             python-version: "3.13"
     steps:
       - name: checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -574,32 +553,16 @@ jobs:
       # to save the cache. So it must come before the thing we want to use
       # the cache.
       ###
-      - name: Get pip cache dir (default)
-        id: pip-cache-default
-        if: ${{ !startsWith(runner.os, 'Windows') }}
+      - name: Get pip cache dir
+        id: pip-cache
         run: |
-          echo "dir=$(pip cache dir)" >>$GITHUB_OUTPUT
+          echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
 
-      - name: Get pip cache dir (Windows)
-        id: pip-cache-windows
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        run: |
-          echo "dir=$(pip cache dir)" >> $Env:GITHUB_OUTPUT
-
-      - name: pip cache (default)
+      - name: pip cache
         uses: actions/cache@v5
-        if: ${{ !startsWith(runner.os, 'Windows') }}
         with:
-          path: ${{ steps.pip-cache-default.outputs.dir }}
+          path: ${{ steps.pip-cache.outputs.dir }}
           key: ${{ runner.os }}-pip_manylinux-${{ matrix.image }}-${{ matrix.python-version }}
-
-      - name: pip cache (Windows)
-        uses: actions/cache@v5
-        if: ${{ startsWith(runner.os, 'Windows') }}
-        with:
-          path: ${{ steps.pip-cache-windows.outputs.dir }}
-          key: ${{ runner.os }}-pip_manylinux-${{ matrix.image }}-${{ matrix.python-version }}
-
 
       - name: Update pip
         run: python -m pip install -U pip
@@ -628,7 +591,7 @@ jobs:
           name: manylinux_${{ matrix.image }}_wheels.zip
 
       - name: Restore pip cache permissions
-        run: sudo chown -R $(whoami) ${{ steps.pip-cache-default.outputs.dir }}
+        run: sudo chown -R $(whoami) ${{ steps.pip-cache.outputs.dir }}
 
       - name: Prevent publishing wheels for unreleased Python versions
         run: VER=$(echo '3.15' | tr -d .) && ls -al wheelhouse && sudo rm -f wheelhouse/*-cp${VER}*.whl && ls -al wheelhouse
@@ -673,7 +636,7 @@ jobs:
           find dist/ -name "*linux_x86_64*" -type f -delete || true
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
         with:
           skip-existing: true
           packages-dir: dist/
